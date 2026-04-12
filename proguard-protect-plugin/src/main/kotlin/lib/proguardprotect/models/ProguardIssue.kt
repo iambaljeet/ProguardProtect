@@ -78,7 +78,13 @@ data class ProguardIssue(
         /** Fragment subclass renamed by R8; FragmentManager back-stack restore fails */
         FRAGMENT_CLASS_RENAMED,
         /** Serializable class renamed by R8; cross-build ObjectInputStream deserialization fails */
-        SERIALIZABLE_CLASS_RENAMED
+        SERIALIZABLE_CLASS_RENAMED,
+        /** ObjectAnimator property setter renamed by R8; string-based property lookup fails at runtime */
+        OBJECT_ANIMATOR_PROPERTY_RENAMED,
+        /** Class.forName() with nested class notation ("X$Y") — outer class renamed breaks path */
+        INNER_CLASS_REFLECTION_RENAMED,
+        /** android:onClick handler method renamed by R8; runtime reflection lookup fails */
+        ANDROID_ONCLICK_METHOD_RENAMED
     }
 
     /** Severity levels for detected issues. */

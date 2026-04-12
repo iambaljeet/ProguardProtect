@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Demo layout for Crash Type 29: ANDROID_ONCLICK_METHOD_RENAMED
+  The android:onClick="handlePaymentSubmit" attribute causes Android to look up
+  the method "handlePaymentSubmit(View)" by reflection in the host Activity at runtime.
+  R8 renames the method since it has no direct Kotlin call sites → IllegalStateException.
+  Reference: https://stackoverflow.com/questions/20665616
+  Reference: https://issuetracker.google.com/issues/37129458
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:id="@+id/tvPaymentTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Payment Form Demo"
+        android:textSize="18sp" />
+
+    <!--
+      android:onClick="handlePaymentSubmit" is resolved at runtime via reflection.
+      If handlePaymentSubmit is renamed by R8, this causes:
+        IllegalStateException: Could not find method handlePaymentSubmit(View)
+        in a parent or ancestor Context
+    -->
+    <Button
+        android:id="@+id/btnSubmitPayment"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:onClick="handlePaymentSubmit"
+        android:text="Submit Payment" />
+
+</LinearLayout>

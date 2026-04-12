@@ -130,3 +130,18 @@
 ## Fix for Crash Type 26: Serializable class renamed → cross-build deserialization fails
 #-keep class app.proguard.models.UserSession { *; }
 ## Also: Add companion object { private const val serialVersionUID = 1L } to UserSession
+
+## Fix for Crash Type 27: ObjectAnimator property setter renamed by R8
+#-keep class app.proguard.models.AnimatedMeterView {
+#    public void setMeterLevel(float);
+#    public float getMeterLevel();
+#}
+
+## Fix for Crash Type 28: Inner/nested class reflection — outer class renamed
+#-keep class app.proguard.models.TaskDispatcher { *; }
+#-keep class app.proguard.models.TaskDispatcher$TaskResult { *; }
+
+## Fix for Crash Type 29: android:onClick handler method renamed by R8
+#-keep class app.proguard.crashes.AndroidOnClickCrash {
+#    public void handlePaymentSubmit(android.view.View);
+#}

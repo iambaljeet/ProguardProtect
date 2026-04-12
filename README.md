@@ -16,7 +16,7 @@ Pre-build source analysis against keep rules can produce false positives. Progua
 
 ## Detected Crash Types
 
-ProguardProtect detects **26 categories** of R8/ProGuard runtime crash vulnerabilities, all confirmed against the actual post-build artifacts.
+ProguardProtect detects **29 categories** of R8/ProGuard runtime crash vulnerabilities, all confirmed against the actual post-build artifacts.
 
 | # | Crash Type | Runtime Exception | Description |
 |---|-----------|-------------------|-------------|
@@ -46,6 +46,9 @@ ProguardProtect detects **26 categories** of R8/ProGuard runtime crash vulnerabi
 | 24 | **JSON Asset Resource Stripped** | `Resources$NotFoundException` | Resource names in JSON config files invisible to aapt2 — removed by strict resource shrinker |
 | 25 | **Fragment Class Renamed** | `ClassNotFoundException` | FragmentManager stores FQCN in saved instance state; R8 rename breaks back-stack restoration |
 | 26 | **Serializable Class Renamed** | `ClassNotFoundException` / `InvalidClassException` | R8 renames Serializable classes — cross-build deserialization fails without `serialVersionUID` |
+| 27 | **ObjectAnimator Property Renamed** | `NoSuchMethodError` | `ObjectAnimator.ofFloat(view, "propertyName", ...)` references setter by string — R8 renames the method |
+| 28 | **Inner Class Reflection Renamed** | `ClassNotFoundException` | `Class.forName("Outer$Inner")` — R8 renames nested classes; `$`-notation breaks |
+| 29 | **Android XML onClick Method Renamed** | `NoSuchMethodException` | `android:onClick="methodName"` in layout XML — R8 renames the handler method, View dispatch fails |
 
 ## Installation
 
@@ -253,6 +256,28 @@ public class DataProcessor extends BaseProcessor implements Processable {
 }
 ```
 
+### ObjectAnimator Property (Type 27)
+```proguard
+# Keep the setter/getter used by ObjectAnimator
+-keepclassmembers class com.myapp.views.AnimatedMeterView {
+    public void setMeterLevel(float);
+    public float getMeterLevel();
+}
+```
+
+### Inner Class Reflection (Type 28)
+```proguard
+-keep class com.myapp.models.OuterClass { *; }
+-keep class com.myapp.models.OuterClass$InnerClass { *; }
+```
+
+### android:onClick (Type 29)
+```proguard
+-keep class com.myapp.MyActivity {
+    public void myClickHandler(android.view.View);
+}
+```
+
 ## Requirements
 
 - Android Gradle Plugin 9.x+
@@ -271,7 +296,7 @@ proguard-protect-plugin/
     ├── ProguardProtectExtension.kt       # DSL configuration
     ├── PostBuildAnalysisTask.kt          # Main analysis task (mapping + DEX + source)
     ├── models/
-    │   └── ProguardIssue.kt              # Issue data model (26 IssueType values)
+    │   └── ProguardIssue.kt              # Issue data model (29 IssueType values)
     ├── analyzers/                        # One analyzer per crash category
     │   ├── BaseAnalyzer.kt
     │   ├── ReflectionClassAnalyzer.kt    # Type 1: Class.forName()
@@ -299,7 +324,10 @@ proguard-protect-plugin/
     │   ├── DynamicProxyAnalyzer.kt       # Type 23: Proxy.newProxyInstance()
     │   ├── JsonAssetResourceAnalyzer.kt  # Type 24: JSON asset resource names
     │   ├── FragmentClassAnalyzer.kt      # Type 25: Fragment class renamed
-    │   └── SerializableAnalyzer.kt       # Type 26: Serializable class renamed
+    │   ├── SerializableAnalyzer.kt       # Type 26: Serializable class renamed
+    │   ├── ObjectAnimatorAnalyzer.kt     # Type 27: ObjectAnimator property string renamed
+    │   ├── InnerClassReflectionAnalyzer.kt # Type 28: Inner class forName($) renamed
+    │   └── AndroidOnClickAnalyzer.kt     # Type 29: android:onClick XML method renamed
     ├── utils/
     │   ├── MappingParser.kt              # mapping.txt parser
     │   ├── ProguardRulesParser.kt        # Keep rule parser

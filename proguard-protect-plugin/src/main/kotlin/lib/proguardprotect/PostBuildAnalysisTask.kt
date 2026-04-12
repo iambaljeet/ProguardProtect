@@ -58,6 +58,11 @@ abstract class PostBuildAnalysisTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val assetsDirs: ConfigurableFileCollection
 
+    /** Resource directories to scan for layout XML files (android:onClick detection). */
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val resDirs: ConfigurableFileCollection
+
     /** ProGuard rules files (used for reference in reports, not for detection logic). */
     @get:Internal
     abstract val proguardFiles: ConfigurableFileCollection
@@ -129,9 +134,14 @@ abstract class PostBuildAnalysisTask : DefaultTask() {
             .filter { it.exists() }
             .flatMap { scanner.scanDirectory(it) }
 
+        // Also scan layout XML files from resDirs for android:onClick detection
+        val xmlSources = resDirs.files
+            .filter { it.exists() }
+            .flatMap { scanner.scanDirectory(it, extensions = listOf("xml")) }
+
         val packages = targetPackages.get()
-        val filteredSources = if (packages.isEmpty()) allSources
-        else allSources.filter { s -> packages.any { s.packageName.startsWith(it) } }
+        val filteredSources = if (packages.isEmpty()) allSources + xmlSources
+        else allSources.filter { s -> packages.any { s.packageName.startsWith(it) } } + xmlSources
 
         logger.lifecycle("  📂 Scanned ${filteredSources.size} source files")
 
@@ -159,7 +169,10 @@ abstract class PostBuildAnalysisTask : DefaultTask() {
             DynamicProxyAnalyzer(),
             JsonAssetResourceAnalyzer(),
             FragmentClassAnalyzer(),
-            SerializableAnalyzer()
+            SerializableAnalyzer(),
+            ObjectAnimatorAnalyzer(),
+            InnerClassReflectionAnalyzer(),
+            AndroidOnClickAnalyzer()
         )
 
         // Run analyzers with EMPTY keep rules to find ALL potentially vulnerable patterns
@@ -679,6 +692,91 @@ abstract class PostBuildAnalysisTask : DefaultTask() {
                             "ClassNotFoundException or InvalidClassException at runtime. ${issue.message}",
                         severity = ProguardIssue.Severity.ERROR
                     ))
+                }
+                continue
+            }
+
+            // For OBJECT_ANIMATOR_PROPERTY_RENAMED: setter method renamed → NoSuchMethodException
+            if (issue.type == ProguardIssue.IssueType.OBJECT_ANIMATOR_PROPERTY_RENAMED) {
+                val memberName = issue.memberName
+                if (memberName != null) {
+                    val setterRenamed = mappingEntry.members.any { m ->
+                        m.originalName == memberName && m.obfuscatedName != memberName && m.type == "method"
+                    }
+                    // ObjectAnimator resolves by method NAME on the live object — class rename doesn't matter.
+                    // Only confirm if the setter itself was renamed (method name changed in mapping).
+                    if (setterRenamed) {
+                        confirmed.add(issue.copy(
+                            message = "[POST-BUILD CONFIRMED] R8 renamed setter '$memberName' in " +
+                                "class '$className' (class mapped → '${mappingEntry.obfuscatedName}'). " +
+                                "ObjectAnimator resolves '$memberName' by reflection at runtime → " +
+                                "NoSuchMethodException. ${issue.message}",
+                            severity = ProguardIssue.Severity.ERROR
+                        ))
+                    }
+                }
+                continue
+            }
+
+            // For INNER_CLASS_REFLECTION_RENAMED: outer or nested class renamed → ClassNotFoundException
+            if (issue.type == ProguardIssue.IssueType.INNER_CLASS_REFLECTION_RENAMED) {
+                val nestedFqcn = className ?: continue  // e.g., "app.proguard.models.TaskDispatcher$TaskResult"
+                val outerFqcn = nestedFqcn.substringBefore("$")
+
+                // Check if the exact nested class itself is in mapping (was renamed)
+                val nestedMappingEntry = mapping[nestedFqcn]
+                val nestedClassRenamed = nestedMappingEntry != null &&
+                    nestedMappingEntry.obfuscatedName != nestedFqcn &&
+                    !nestedMappingEntry.obfuscatedName.endsWith(nestedFqcn.substringAfterLast("."))
+                val nestedMissingFromDex = nestedMappingEntry != null &&
+                    !dexClasses.contains(nestedMappingEntry.obfuscatedName)
+
+                // Check if outer class was renamed (which implicitly renames all nested paths)
+                val outerMappingEntry = mapping[outerFqcn]
+                val outerRenamed = outerMappingEntry != null &&
+                    outerMappingEntry.obfuscatedName != outerFqcn &&
+                    !outerMappingEntry.obfuscatedName.contains(".")
+
+                if (nestedClassRenamed || nestedMissingFromDex || outerRenamed || wasRenamed) {
+                    val detail = when {
+                        outerRenamed ->
+                            "R8 renamed outer class '$outerFqcn' → '${outerMappingEntry?.obfuscatedName}'. " +
+                            "The nested class path '$nestedFqcn' no longer resolves in the DEX"
+                        nestedMissingFromDex ->
+                            "R8 removed nested class '$nestedFqcn' from DEX entirely"
+                        nestedClassRenamed ->
+                            "R8 renamed nested class '$nestedFqcn' → '${nestedMappingEntry?.obfuscatedName}'"
+                        else ->
+                            "R8 renamed class '$className' → '${mappingEntry.obfuscatedName}'"
+                    }
+                    confirmed.add(issue.copy(
+                        message = "[POST-BUILD CONFIRMED] $detail. " +
+                            "Class.forName(\"$nestedFqcn\") will throw ClassNotFoundException at runtime. ${issue.message}",
+                        severity = ProguardIssue.Severity.ERROR,
+                        className = nestedFqcn
+                    ))
+                }
+                continue
+            }
+
+            // For ANDROID_ONCLICK_METHOD_RENAMED: handler method renamed → IllegalStateException
+            if (issue.type == ProguardIssue.IssueType.ANDROID_ONCLICK_METHOD_RENAMED) {
+                val memberName = issue.memberName
+                if (memberName != null) {
+                    val methodRenamed = mappingEntry.members.any { m ->
+                        m.originalName == memberName && m.obfuscatedName != memberName && m.type == "method"
+                    }
+                    // android:onClick resolves the method by name on the Activity/Context — class rename alone doesn't matter.
+                    // Only confirm if the method name itself was renamed in the mapping.
+                    if (methodRenamed) {
+                        confirmed.add(issue.copy(
+                            message = "[POST-BUILD CONFIRMED] R8 renamed onClick handler '$memberName' in " +
+                                "'$className' (class mapped → '${mappingEntry.obfuscatedName}'). " +
+                                "android:onClick resolves '$memberName(View)' by reflection → " +
+                                "IllegalStateException: Could not find method at runtime. ${issue.message}",
+                            severity = ProguardIssue.Severity.ERROR
+                        ))
+                    }
                 }
                 continue
             }

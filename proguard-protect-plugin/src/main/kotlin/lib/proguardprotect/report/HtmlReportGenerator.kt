@@ -254,6 +254,9 @@ class HtmlReportGenerator {
         ProguardIssue.IssueType.JSON_ASSET_RESOURCE_STRIPPED -> "📄"
         ProguardIssue.IssueType.FRAGMENT_CLASS_RENAMED -> "🧱"
         ProguardIssue.IssueType.SERIALIZABLE_CLASS_RENAMED -> "💾"
+        ProguardIssue.IssueType.OBJECT_ANIMATOR_PROPERTY_RENAMED -> "🎬"
+        ProguardIssue.IssueType.INNER_CLASS_REFLECTION_RENAMED -> "🪆"
+        ProguardIssue.IssueType.ANDROID_ONCLICK_METHOD_RENAMED -> "👆"
     }
 
     /** Returns a human-readable label for each issue type. */
@@ -283,6 +286,9 @@ class HtmlReportGenerator {
         ProguardIssue.IssueType.JSON_ASSET_RESOURCE_STRIPPED -> "JSON Asset Resource Removed by Shrinker"
         ProguardIssue.IssueType.FRAGMENT_CLASS_RENAMED -> "Fragment Class Renamed (Back Stack Fails)"
         ProguardIssue.IssueType.SERIALIZABLE_CLASS_RENAMED -> "Serializable Class Renamed (Cross-Build Fails)"
+        ProguardIssue.IssueType.OBJECT_ANIMATOR_PROPERTY_RENAMED -> "ObjectAnimator Property Setter Renamed (NoSuchMethodException)"
+        ProguardIssue.IssueType.INNER_CLASS_REFLECTION_RENAMED -> "Nested Class Reflection Broken (ClassNotFoundException)"
+        ProguardIssue.IssueType.ANDROID_ONCLICK_METHOD_RENAMED -> "android:onClick Handler Renamed (IllegalStateException)"
     }
 
     /** Escapes HTML special characters. */

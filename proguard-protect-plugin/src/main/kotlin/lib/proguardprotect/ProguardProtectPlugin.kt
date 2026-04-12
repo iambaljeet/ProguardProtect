@@ -118,6 +118,11 @@ class ProguardProtectPlugin : Plugin<Project> {
                     val mainAssetsDir = proj.file("src/main/assets")
                     if (mainAssetsDir.exists()) variantAssetsDirs.add(mainAssetsDir)
 
+                    // Resource dirs: src/main/res + flavor/res + buildType/res (for android:onClick XML detection)
+                    val variantResDirs = mutableListOf<File>()
+                    val mainResDir = proj.file("src/main/res")
+                    if (mainResDir.exists()) variantResDirs.add(mainResDir)
+
                     for (srcSet in listOf(config.buildTypeName, config.flavorName, config.variantName)) {
                         if (srcSet == null) continue
                         val javaDir = proj.file("src/$srcSet/java")
@@ -126,6 +131,8 @@ class ProguardProtectPlugin : Plugin<Project> {
                         if (kotlinDir.exists()) variantSrcDirs.add(kotlinDir)
                         val assetsDir = proj.file("src/$srcSet/assets")
                         if (assetsDir.exists()) variantAssetsDirs.add(assetsDir)
+                        val resDir = proj.file("src/$srcSet/res")
+                        if (resDir.exists()) variantResDirs.add(resDir)
                     }
 
                     // Collect proguard files
@@ -153,6 +160,7 @@ class ProguardProtectPlugin : Plugin<Project> {
                             task.targetPackages.set(extension.targetPackages)
                             task.sourceDirs.setFrom(variantSrcDirs)
                             task.assetsDirs.setFrom(variantAssetsDirs)
+                            task.resDirs.setFrom(variantResDirs)
                             task.proguardFiles.setFrom(pgFiles)
                             task.reportDir.set(proj.layout.buildDirectory.dir("reports/proguardProtect"))
 
