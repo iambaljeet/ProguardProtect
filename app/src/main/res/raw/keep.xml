@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Resource shrink keep rules file — CRASH MODE (no tools:keep applied).
+
+    shrinkMode="strict" forces aapt2 to ONLY keep resources that are directly
+    referenced via R.type.name in code.
+
+    Fix for Type 19: add tools:keep="@drawable/promo_banner"
+    Fix for Type 24: add tools:keep="@drawable/feature_banner,@drawable/promo_overlay"
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:shrinkMode="strict">
+</resources>

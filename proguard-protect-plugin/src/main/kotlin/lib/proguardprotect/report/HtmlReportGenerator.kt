@@ -246,6 +246,14 @@ class HtmlReportGenerator {
         ProguardIssue.IssueType.WORKMANAGER_WORKER_STRIPPED -> "🔧"
         ProguardIssue.IssueType.CUSTOM_VIEW_STRIPPED -> "🖼️"
         ProguardIssue.IssueType.KOTLIN_OBJECT_INSTANCE_REMOVED -> "🎯"
+        ProguardIssue.IssueType.RESOURCE_SHRUNK_BY_NAME -> "🖼"
+        ProguardIssue.IssueType.GENERIC_SIGNATURE_STRIPPED -> "📐"
+        ProguardIssue.IssueType.COMPONENT_CLASS_NOT_FOUND -> "📍"
+        ProguardIssue.IssueType.DATA_CLASS_MEMBER_STRIPPED -> "📋"
+        ProguardIssue.IssueType.DYNAMIC_PROXY_STRIPPED -> "🔀"
+        ProguardIssue.IssueType.JSON_ASSET_RESOURCE_STRIPPED -> "📄"
+        ProguardIssue.IssueType.FRAGMENT_CLASS_RENAMED -> "🧱"
+        ProguardIssue.IssueType.SERIALIZABLE_CLASS_RENAMED -> "💾"
     }
 
     /** Returns a human-readable label for each issue type. */
@@ -267,6 +275,14 @@ class HtmlReportGenerator {
         ProguardIssue.IssueType.WORKMANAGER_WORKER_STRIPPED -> "WorkManager Worker Stripped"
         ProguardIssue.IssueType.CUSTOM_VIEW_STRIPPED -> "Custom View Class Renamed"
         ProguardIssue.IssueType.KOTLIN_OBJECT_INSTANCE_REMOVED -> "Kotlin Object INSTANCE Removed"
+        ProguardIssue.IssueType.RESOURCE_SHRUNK_BY_NAME -> "Resource Removed by Shrinker (getIdentifier)"
+        ProguardIssue.IssueType.GENERIC_SIGNATURE_STRIPPED -> "Generic Signature Attribute Stripped"
+        ProguardIssue.IssueType.COMPONENT_CLASS_NOT_FOUND -> "Component Class Renamed (ActivityNotFoundException)"
+        ProguardIssue.IssueType.DATA_CLASS_MEMBER_STRIPPED -> "Data Class copy()/componentN() Removed"
+        ProguardIssue.IssueType.DYNAMIC_PROXY_STRIPPED -> "Dynamic Proxy Interface Renamed"
+        ProguardIssue.IssueType.JSON_ASSET_RESOURCE_STRIPPED -> "JSON Asset Resource Removed by Shrinker"
+        ProguardIssue.IssueType.FRAGMENT_CLASS_RENAMED -> "Fragment Class Renamed (Back Stack Fails)"
+        ProguardIssue.IssueType.SERIALIZABLE_CLASS_RENAMED -> "Serializable Class Renamed (Cross-Build Fails)"
     }
 
     /** Escapes HTML special characters. */

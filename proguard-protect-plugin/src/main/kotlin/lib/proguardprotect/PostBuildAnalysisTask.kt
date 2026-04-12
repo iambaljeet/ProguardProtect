@@ -53,6 +53,11 @@ abstract class PostBuildAnalysisTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val sourceDirs: ConfigurableFileCollection
 
+    /** Asset directories to scan for JSON config files and other asset resources. */
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val assetsDirs: ConfigurableFileCollection
+
     /** ProGuard rules files (used for reference in reports, not for detection logic). */
     @get:Internal
     abstract val proguardFiles: ConfigurableFileCollection
@@ -146,7 +151,15 @@ abstract class PostBuildAnalysisTask : DefaultTask() {
             NativeMethodAnalyzer(),
             WorkManagerAnalyzer(),
             CustomViewAnalyzer(),
-            KotlinObjectAnalyzer()
+            KotlinObjectAnalyzer(),
+            ResourceNameAnalyzer(),
+            GenericSignatureAnalyzer(),
+            ComponentNameAnalyzer(),
+            DataClassMemberAnalyzer(),
+            DynamicProxyAnalyzer(),
+            JsonAssetResourceAnalyzer(),
+            FragmentClassAnalyzer(),
+            SerializableAnalyzer()
         )
 
         // Run analyzers with EMPTY keep rules to find ALL potentially vulnerable patterns
@@ -241,18 +254,120 @@ abstract class PostBuildAnalysisTask : DefaultTask() {
 
             val mappingEntry = mapping[className]
 
-            // Devirtualization: source pattern is sufficient since R8 always devirtualizes this
+            // Devirtualization: class must exist in the build and NOT be fully protected by keep rules.
+            // Note: this is a code-level issue. The real fix is to override the method in the subclass.
+            // Keep rules prevent class renaming but do NOT prevent R8 from devirtualizing calls.
+            // We confirm this issue if the class exists in the build regardless of keep rules,
+            // since keep rules do not stop R8's devirtualization optimizations.
             if (issue.type == ProguardIssue.IssueType.DEVIRTUALIZATION_ILLEGAL_ACCESS) {
                 // Confirm class exists in mapping (meaning it was compiled and processed by R8)
                 val classInBuild = mappingEntry != null || (dexClasses.isNotEmpty() && className in dexClasses)
                 if (classInBuild || mapping.isNotEmpty()) {
+                    val classRenamed = mappingEntry != null && mappingEntry.obfuscatedName != className.replace('.', '/')
+                        && mappingEntry.obfuscatedName != className
+                    val renamedNote = if (classRenamed) " Class was renamed → '${mappingEntry?.obfuscatedName}'."
+                                      else " Class name preserved (keep rule applied)."
                     confirmed.add(issue.copy(
-                        message = "[POST-BUILD CONFIRMED] ${issue.message}",
+                        message = "[POST-BUILD CONFIRMED]$renamedNote ${issue.message}",
                         severity = ProguardIssue.Severity.ERROR
                     ))
                 }
                 continue
             }
+
+            // For RESOURCE_SHRUNK_BY_NAME: check if the named resource actually exists in APK/AAB.
+            // The className here is the source package (not a Java class), so skip mapping lookup.
+            if (issue.type == ProguardIssue.IssueType.RESOURCE_SHRUNK_BY_NAME) {
+                val memberName = issue.memberName ?: continue
+                if (memberName == "dynamic_getIdentifier") {
+                    // Dynamic name — can't statically verify, keep as warning
+                    continue
+                }
+                val parts = memberName.split("/")
+                if (parts.size == 2) {
+                    val resType = parts[0]
+                    val resName = parts[1]
+                    if (!resourceExistsInArtifact(resType, resName)) {
+                        confirmed.add(issue.copy(
+                            message = "[POST-BUILD CONFIRMED] Resource '$resName' (type: $resType) is absent from the " +
+                                "final APK/AAB — aapt2 removed it during resource shrinking. ${issue.message}",
+                            severity = ProguardIssue.Severity.ERROR
+                        ))
+                    }
+                }
+                continue
+            }
+
+            // For JSON_ASSET_RESOURCE_STRIPPED: assets/*.json → resources referenced in JSON files
+            // scan the actual JSON files in assets and verify each resource name against resources.txt
+            if (issue.type == ProguardIssue.IssueType.JSON_ASSET_RESOURCE_STRIPPED) {
+                val memberName = issue.memberName ?: continue
+                if (memberName == "json_dynamic_getIdentifier") {
+                    // Dynamic path — can't statically verify JSON content, keep as warning
+                    continue
+                }
+                if (memberName.startsWith("json_asset:")) {
+                    val jsonFileName = memberName.removePrefix("json_asset:")
+                    // Find the JSON file in asset directories first, then source directories
+                    val jsonFile = (assetsDirs.files + sourceDirs.files)
+                        .flatMap { dir -> dir.walkTopDown().filter { it.name == jsonFileName.substringAfterLast("/") } }
+                        .firstOrNull()
+                    if (jsonFile != null && jsonFile.exists()) {
+                        val missingResources = findMissingJsonResources(jsonFile)
+                        if (missingResources.isNotEmpty()) {
+                            confirmed.add(issue.copy(
+                                message = "[POST-BUILD CONFIRMED] ${missingResources.size} resource(s) referenced in " +
+                                    "'$jsonFileName' are absent from the final APK/AAB — aapt2 removed them during " +
+                                    "strict resource shrinking. Missing: ${missingResources.joinToString(", ")}. " +
+                                    "${issue.message}",
+                                severity = ProguardIssue.Severity.ERROR
+                            ))
+                        }
+                    }
+                }
+                continue
+            }
+
+            // For GENERIC_SIGNATURE_STRIPPED: the actual fix is -keepattributes Signature.
+            // We check the raw ProGuard rule files for the keepattributes directive.
+            // No DEX check needed — the Signature attribute is stripped globally whenever
+            // -keepattributes Signature is absent, affecting all classes that use
+            // genericSuperclass/ParameterizedType for runtime generic type introspection.
+            if (issue.type == ProguardIssue.IssueType.GENERIC_SIGNATURE_STRIPPED) {
+                val hasSignatureKeep = proguardFiles.files.any { f ->
+                    if (!f.exists()) return@any false
+                    // Parse multi-line -keepattributes directives:
+                    // AGP's default file uses indented continuation lines, e.g.:
+                    //   -keepattributes AnnotationDefault,
+                    //                   Signature
+                    // We join continuation lines (non-comment lines that don't start with '-')
+                    // to handle both single-line and multi-line forms.
+                    val lines = f.readLines()
+                    val joined = StringBuilder()
+                    for (line in lines) {
+                        val stripped = line.replace(Regex("#.*$"), "").trim()
+                        if (stripped.isEmpty()) continue
+                        if (stripped.startsWith("-")) {
+                            joined.append("\n").append(stripped)
+                        } else {
+                            // Continuation line — join to previous
+                            joined.append(" ").append(stripped)
+                        }
+                    }
+                    Regex("""-keepattributes\b[^\n]*\bSignature\b""").containsMatchIn(joined.toString())
+                }
+                if (!hasSignatureKeep) {
+                    confirmed.add(issue.copy(
+                        message = "[POST-BUILD CONFIRMED] '-keepattributes Signature' is absent from ProGuard rules. " +
+                            "R8 strips the Signature bytecode attribute from ALL classes — including '$className'. " +
+                            "genericSuperclass returns raw Class instead of ParameterizedType → ClassCastException at runtime. " +
+                            "${issue.message}",
+                        severity = ProguardIssue.Severity.ERROR
+                    ))
+                }
+                continue
+            }
+
 
             if (mappingEntry == null) {
                 // Class not in mapping at all — could mean R8 removed it entirely
@@ -467,20 +582,101 @@ abstract class PostBuildAnalysisTask : DefaultTask() {
                 continue
             }
 
-            // For KOTLIN_OBJECT_INSTANCE_REMOVED: class renamed OR INSTANCE field removed
+            // For KOTLIN_OBJECT_INSTANCE_REMOVED: class renamed OR INSTANCE field renamed away
             if (issue.type == ProguardIssue.IssueType.KOTLIN_OBJECT_INSTANCE_REMOVED) {
-                val instanceFieldRemoved = mappingEntry.members.none { m ->
-                    m.originalName == "INSTANCE"
+                // mapping.txt only lists RENAMED entries. Absence of INSTANCE means it was
+                // preserved (not renamed), NOT that it was removed. We check:
+                // 1. Class was renamed → Class.forName() / objectInstance will fail
+                // 2. INSTANCE field was renamed to something else (appears with different obfuscated name)
+                val instanceFieldRenamed = mappingEntry.members.any { m ->
+                    m.originalName == "INSTANCE" && m.obfuscatedName != "INSTANCE"
                 }
-                if (wasRenamed || instanceFieldRemoved) {
+                // Also flag if class is NOT in DEX at all (removed entirely)
+                val classRemovedFromDex = !dexClasses.contains(mappingEntry.obfuscatedName)
+                if (wasRenamed || instanceFieldRenamed || classRemovedFromDex) {
                     val detail = when {
-                        wasRenamed && instanceFieldRemoved ->
+                        wasRenamed && instanceFieldRenamed ->
                             "R8 renamed class '$className' → '${mappingEntry.obfuscatedName}' AND removed INSTANCE field"
+                        classRemovedFromDex ->
+                            "R8 removed class '$className' entirely from DEX"
                         wasRenamed -> "R8 renamed class '$className' → '${mappingEntry.obfuscatedName}'"
-                        else -> "R8 removed INSTANCE field from class '$className'"
+                        else -> "R8 renamed INSTANCE field in class '$className'"
                     }
                     confirmed.add(issue.copy(
                         message = "[POST-BUILD CONFIRMED] $detail. ${issue.message}",
+                        severity = ProguardIssue.Severity.ERROR
+                    ))
+                }
+                continue
+            }
+
+            // For COMPONENT_CLASS_NOT_FOUND: component (Activity/Service) class renamed → string ref stale
+            if (issue.type == ProguardIssue.IssueType.COMPONENT_CLASS_NOT_FOUND) {
+                if (wasRenamed) {
+                    confirmed.add(issue.copy(
+                        message = "[POST-BUILD CONFIRMED] R8 renamed component class '$className' → '${mappingEntry.obfuscatedName}'. " +
+                            "ComponentName/setClassName uses original string → ActivityNotFoundException at runtime. ${issue.message}",
+                        severity = ProguardIssue.Severity.ERROR
+                    ))
+                }
+                continue
+            }
+
+            // For DATA_CLASS_MEMBER_STRIPPED: class renamed or copy()/componentN() methods removed
+            if (issue.type == ProguardIssue.IssueType.DATA_CLASS_MEMBER_STRIPPED) {
+                val copyMethodRemoved = mappingEntry.members.none { m ->
+                    m.originalName == "copy" || m.originalName.startsWith("component")
+                }
+                if (wasRenamed || copyMethodRemoved) {
+                    val detail = when {
+                        wasRenamed && copyMethodRemoved ->
+                            "R8 renamed class '$className' → '${mappingEntry.obfuscatedName}' AND removed copy()/componentN() methods"
+                        wasRenamed -> "R8 renamed class '$className' → '${mappingEntry.obfuscatedName}'"
+                        else -> "R8 removed copy()/componentN() methods from '$className'"
+                    }
+                    confirmed.add(issue.copy(
+                        message = "[POST-BUILD CONFIRMED] $detail. ${issue.message}",
+                        severity = ProguardIssue.Severity.ERROR
+                    ))
+                }
+                continue
+            }
+
+            // For DYNAMIC_PROXY_STRIPPED: interface renamed → Proxy dispatch fails
+            if (issue.type == ProguardIssue.IssueType.DYNAMIC_PROXY_STRIPPED) {
+                if (wasRenamed) {
+                    confirmed.add(issue.copy(
+                        message = "[POST-BUILD CONFIRMED] R8 renamed interface '$className' → '${mappingEntry.obfuscatedName}'. " +
+                            "InvocationHandler dispatch uses original method names → IllegalArgumentException or " +
+                            "AbstractMethodError at runtime. ${issue.message}",
+                        severity = ProguardIssue.Severity.ERROR
+                    ))
+                }
+                continue
+            }
+
+            // For FRAGMENT_CLASS_RENAMED: Fragment subclass renamed → back stack restoration fails
+            if (issue.type == ProguardIssue.IssueType.FRAGMENT_CLASS_RENAMED) {
+                if (wasRenamed) {
+                    confirmed.add(issue.copy(
+                        message = "[POST-BUILD CONFIRMED] R8 renamed Fragment class '$className' → '${mappingEntry.obfuscatedName}'. " +
+                            "FragmentManager persists the original FQCN in saved instance state. " +
+                            "On activity recreation (rotation/process death), FragmentFactory.instantiate() " +
+                            "looks up '$className' which no longer exists → ClassNotFoundException. ${issue.message}",
+                        severity = ProguardIssue.Severity.ERROR
+                    ))
+                }
+                continue
+            }
+
+            // For SERIALIZABLE_CLASS_RENAMED: class renamed → cross-build deserialization fails
+            if (issue.type == ProguardIssue.IssueType.SERIALIZABLE_CLASS_RENAMED) {
+                if (wasRenamed) {
+                    confirmed.add(issue.copy(
+                        message = "[POST-BUILD CONFIRMED] R8 renamed Serializable class '$className' → '${mappingEntry.obfuscatedName}'. " +
+                            "The serialized byte stream embeds the class FQCN. Any data serialized by a " +
+                            "differently-obfuscated or unobfuscated build cannot be deserialized → " +
+                            "ClassNotFoundException or InvalidClassException at runtime. ${issue.message}",
                         severity = ProguardIssue.Severity.ERROR
                     ))
                 }
@@ -521,8 +717,163 @@ abstract class PostBuildAnalysisTask : DefaultTask() {
     }
 
     /**
+     * Checks whether a named resource (e.g. `promo_banner` drawable) exists in the final APK/AAB.
+     * Used to post-build confirm [ProguardIssue.IssueType.RESOURCE_SHRUNK_BY_NAME] issues.
+     *
+     * Resources removed by aapt2's shrinkResources will not have any entry in the artifact's
+     * zip contents for their `res/type/name` path.
+     *
+     * @param resourceType Resource type string, e.g. "drawable", "layout", "string"
+     * @param resourceName Resource name without extension, e.g. "promo_banner"
+     * @return `true` if the resource was found in the artifact, `false` if removed/absent
+     */
+    /**
+     * Checks if a resource exists in the final build artifact.
+     *
+     * Priority: Check `resources.txt` (generated by aapt2's resource shrinker) first,
+     * since AGP 9+ obfuscates resource file names in the APK/AAB zip entries, making
+     * zip-based lookup unreliable. Falls back to zip inspection for older AGP versions.
+     *
+     * @param resourceType Resource type (e.g. "drawable")
+     * @param resourceName Resource name without extension (e.g. "promo_banner")
+     * @return true if the resource exists in the final artifact, false if removed
+     */
+    private fun resourceExistsInArtifact(resourceType: String, resourceName: String): Boolean {
+        // Primary: check resources.txt (generated alongside mapping.txt by aapt2 shrinker)
+        // Format: "drawable:name:id reachable from ..." or "drawable:name:id unused"
+        val mappingDir = mappingFile.get().asFile.parentFile
+        val resourcesReport = File(mappingDir, "resources.txt")
+        if (resourcesReport.exists()) {
+            return resourceExistsInResourcesReport(resourcesReport, resourceType, resourceName)
+        }
+
+        // Fallback: zip inspection (unreliable on AGP 9+ due to resource name obfuscation)
+        val apk = findApk()
+        if (apk != null && apk.exists()) {
+            if (resourceExistsInZip(apk, resourceType, resourceName, "")) return true
+        }
+        val aab = findAab()
+        if (aab != null && aab.exists()) {
+            if (resourceExistsInZip(aab, resourceType, resourceName, "base/")) return true
+        }
+        // If neither artifact found, assume resource exists (avoid false positive)
+        return apk == null && aab == null
+    }
+
+    /**
+     * Checks if a resource is marked as reachable in the aapt2 resource shrink report.
+     *
+     * The `resources.txt` file (generated at `build/outputs/mapping/<variant>/resources.txt`)
+     * lists every resource with its reachability status:
+     * - `drawable:promo_banner:2131034134 reachable from keep xml file` → resource kept
+     * - No entry or `... unused` → resource was removed by aapt2 strict mode
+     *
+     * @param resourcesReport The `resources.txt` file
+     * @param resourceType Resource type folder (e.g. "drawable")
+     * @param resourceName Resource name without extension (e.g. "promo_banner")
+     * @return true if the resource is reachable (kept), false if absent or unused
+     */
+    private fun resourceExistsInResourcesReport(
+        resourcesReport: File,
+        resourceType: String,
+        resourceName: String
+    ): Boolean {
+        return try {
+            resourcesReport.bufferedReader().use { reader ->
+                reader.lineSequence().any { line ->
+                    // Match lines like: "drawable:promo_banner:... reachable from ..."
+                    // Avoid "is not reachable." which also contains "reachable"
+                    line.startsWith("$resourceType:$resourceName:") && line.contains("reachable from")
+                }
+            }
+        } catch (e: Exception) {
+            logger.warn("ProguardProtect: Could not read resources.txt: ${e.message}")
+            true // Assume exists on error to avoid false positive
+        }
+    }
+
+
+    /**
+     * Checks if a resource file exists inside a zip artifact (APK or AAB).
+     * Fallback for when resources.txt is unavailable (older AGP).
+     * Note: AGP 9+ obfuscates resource file names, making this unreliable.
+     *
+     * @param artifact The APK or AAB zip file
+     * @param resourceType Resource type (e.g. "drawable")
+     * @param resourceName Resource name without extension (e.g. "promo_banner")
+     * @param prefix Path prefix inside zip ("" for APK, "base/" for AAB)
+     */
+    private fun resourceExistsInZip(
+        artifact: File,
+        resourceType: String,
+        resourceName: String,
+        prefix: String
+    ): Boolean {
+        return try {
+            java.util.zip.ZipFile(artifact).use { zip ->
+                val entries = zip.entries().toList()
+                entries.any { entry ->
+                    val path = entry.name
+                    path.startsWith("${prefix}res/$resourceType") &&
+                        (path.contains("/$resourceName.") || path.endsWith("/$resourceName"))
+                }
+            }
+        } catch (e: Exception) {
+            logger.warn("ProguardProtect: Could not inspect artifact ${artifact.name} for resource check: ${e.message}")
+            true // Assume exists on error to avoid false positive
+        }
+    }
+
+    /**
+     * Scans a JSON asset file for string values that look like Android resource names,
+     * then checks each against [resourceExistsInArtifact] to find which ones were shrunk away.
+     *
+     * @param jsonFile The JSON asset file to scan
+     * @return List of "type/name" strings for resources that are absent from the final artifact
+     */
+    private fun findMissingJsonResources(jsonFile: File): List<String> {
+        val missing = mutableListOf<String>()
+        try {
+            val content = jsonFile.readText()
+            // Extract all quoted string values from the JSON (any depth)
+            val stringValuePattern = Regex(""""([a-z][a-z0-9_]{2,49})"""")
+            val resourceNamePattern = Regex("""^[a-z][a-z0-9_]{2,49}$""")
+            val candidates = stringValuePattern.findAll(content)
+                .map { it.groupValues[1] }
+                .filter { resourceNamePattern.matches(it) }
+                .toSet()
+
+            // Check against each common drawable/string resource type
+            val resourceTypes = listOf("drawable", "mipmap", "string", "layout", "raw")
+            val mappingDir = mappingFile.get().asFile.parentFile
+            val resourcesReport = File(mappingDir, "resources.txt")
+
+            if (resourcesReport.exists()) {
+                // Read resources.txt once and search for each candidate
+                val resourcesContent = resourcesReport.readText()
+                for (candidate in candidates) {
+                    for (resType in resourceTypes) {
+                        val isReachable = resourcesContent.lines().any { line ->
+                            line.startsWith("$resType:$candidate:") && line.contains("reachable from")
+                        }
+                        val isPresent = resourcesContent.lines().any { line ->
+                            line.startsWith("$resType:$candidate:")
+                        }
+                        if (isPresent && !isReachable) {
+                            missing.add("$resType/$candidate")
+                            break // Don't double-report same name across types
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            logger.warn("ProguardProtect: Could not scan JSON asset file ${jsonFile.name}: ${e.message}")
+        }
+        return missing
+    }
+
+    /**
      * Retrieves the set of class names present in the final DEX files of the APK/AAB.
-     * Uses `apkanalyzer` from the Android SDK command-line tools.
      *
      * @return Set of fully-qualified class names, or empty set if tools unavailable
      */

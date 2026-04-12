@@ -112,12 +112,20 @@ class ProguardProtectPlugin : Plugin<Project> {
                     val variantSrcDirs = mutableListOf<File>()
                     if (mainJavaDir.exists()) variantSrcDirs.add(mainJavaDir)
                     if (mainKotlinDir.exists()) variantSrcDirs.add(mainKotlinDir)
+
+                    // Asset dirs: src/main/assets + flavor/assets + buildType/assets
+                    val variantAssetsDirs = mutableListOf<File>()
+                    val mainAssetsDir = proj.file("src/main/assets")
+                    if (mainAssetsDir.exists()) variantAssetsDirs.add(mainAssetsDir)
+
                     for (srcSet in listOf(config.buildTypeName, config.flavorName, config.variantName)) {
                         if (srcSet == null) continue
                         val javaDir = proj.file("src/$srcSet/java")
                         val kotlinDir = proj.file("src/$srcSet/kotlin")
                         if (javaDir.exists()) variantSrcDirs.add(javaDir)
                         if (kotlinDir.exists()) variantSrcDirs.add(kotlinDir)
+                        val assetsDir = proj.file("src/$srcSet/assets")
+                        if (assetsDir.exists()) variantAssetsDirs.add(assetsDir)
                     }
 
                     // Collect proguard files
@@ -144,6 +152,7 @@ class ProguardProtectPlugin : Plugin<Project> {
                             task.failOnError.set(extension.failOnError)
                             task.targetPackages.set(extension.targetPackages)
                             task.sourceDirs.setFrom(variantSrcDirs)
+                            task.assetsDirs.setFrom(variantAssetsDirs)
                             task.proguardFiles.setFrom(pgFiles)
                             task.reportDir.set(proj.layout.buildDirectory.dir("reports/proguardProtect"))
 

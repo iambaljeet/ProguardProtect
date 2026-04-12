@@ -62,7 +62,23 @@ data class ProguardIssue(
         /** Custom View class renamed by R8 → InflateException when inflating from XML */
         CUSTOM_VIEW_STRIPPED,
         /** Kotlin object INSTANCE field removed by R8 → NoSuchFieldError via reflection */
-        KOTLIN_OBJECT_INSTANCE_REMOVED
+        KOTLIN_OBJECT_INSTANCE_REMOVED,
+        /** Resource accessed only via getIdentifier() string is removed by aapt2 strict shrinking */
+        RESOURCE_SHRUNK_BY_NAME,
+        /** R8 strips Signature bytecode attribute → genericSuperclass cast to ParameterizedType fails */
+        GENERIC_SIGNATURE_STRIPPED,
+        /** Activity/Service class referenced by string in ComponentName/Intent renamed by R8 */
+        COMPONENT_CLASS_NOT_FOUND,
+        /** Data class copy()/componentN() methods removed by R8, accessed via Kotlin reflection */
+        DATA_CLASS_MEMBER_STRIPPED,
+        /** Interface used with Proxy.newProxyInstance() renamed/stripped by R8 */
+        DYNAMIC_PROXY_STRIPPED,
+        /** Resource name embedded in JSON asset file; aapt2 cannot see it → resource shrunk away */
+        JSON_ASSET_RESOURCE_STRIPPED,
+        /** Fragment subclass renamed by R8; FragmentManager back-stack restore fails */
+        FRAGMENT_CLASS_RENAMED,
+        /** Serializable class renamed by R8; cross-build ObjectInputStream deserialization fails */
+        SERIALIZABLE_CLASS_RENAMED
     }
 
     /** Severity levels for detected issues. */

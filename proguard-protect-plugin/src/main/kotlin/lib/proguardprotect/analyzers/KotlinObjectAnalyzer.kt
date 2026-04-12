@@ -28,8 +28,6 @@ class KotlinObjectAnalyzer : BaseAnalyzer() {
     private val objectDeclPattern = Regex("""^\s*(?:internal\s+|private\s+|public\s+)?object\s+([A-Z][a-zA-Z0-9]*)""")
     // Only match objectInstance access and .INSTANCE field access — not generic Class.forName
     private val objectInstancePattern = Regex("""(\w+)::class\.objectInstance|(\w+)\.INSTANCE\b""")
-    // Class.forName specifically combined with getField("INSTANCE") — direct INSTANCE reflection
-    private val instanceViaReflectionPattern = Regex("""Class\.forName\s*\([^)]+\).*getField\s*\(\s*"INSTANCE"\s*\)""", RegexOption.DOT_MATCHES_ALL)
 
     override fun analyze(sourceFiles: List<SourceFile>, keepRules: List<KeepRule>): List<ProguardIssue> {
         val issues = mutableListOf<ProguardIssue>()
@@ -59,10 +57,19 @@ class KotlinObjectAnalyzer : BaseAnalyzer() {
                 if (name in objectClasses) reflectedObjects.add(name)
             }
 
-            // Check for Class.forName(...).getField("INSTANCE") pattern
-            if (instanceViaReflectionPattern.containsMatchIn(fullContent)) {
-                objectClasses.keys.forEach { name ->
-                    if (fullContent.contains(name)) reflectedObjects.add(name)
+            // Class.forName("FQN").getField("INSTANCE") — extract the specific class name
+            // Use a precise pattern to avoid flagging unrelated objects in the same file.
+            val classForNameInstancePattern = Regex(
+                """Class\.forName\s*\(\s*"([a-zA-Z0-9._${'$'}]+)"\s*\)(?:.*?)getField\s*\(\s*"INSTANCE"\s*\)""",
+                RegexOption.DOT_MATCHES_ALL
+            )
+            classForNameInstancePattern.findAll(fullContent).forEach { instanceMatch ->
+                val targetFqn = instanceMatch.groupValues[1]
+                objectClasses.forEach { (name, pair) ->
+                    val fqn = "${pair.first.packageName}.$name"
+                    if (targetFqn == fqn || targetFqn.endsWith(".$name")) {
+                        reflectedObjects.add(name)
+                    }
                 }
             }
         }

@@ -50,6 +50,14 @@ class MainActivity : ComponentActivity() {
             CrashTest(16, "WorkManager Stripped", "R8 renames Worker class — WorkManager ClassNotFoundException", WorkManagerCrash::trigger),
             CrashTest(17, "Custom View Stripped", "R8 renames custom View class — InflateException", CustomViewCrash::trigger),
             CrashTest(18, "Kotlin Object INSTANCE", "R8 removes Kotlin object INSTANCE field — NoSuchFieldError", KotlinObjectCrash::trigger),
+            CrashTest(19, "Resource Shrunk By Name", "getIdentifier() with string name — aapt2 shrinks resource not referenced in code") { ResourceNameCrash.trigger(this) },
+            CrashTest(20, "Generic Signature", "genericSuperclass cast to ParameterizedType — R8 strips Signature attribute", GenericSignatureCrash::trigger),
+            CrashTest(21, "ComponentName Renamed", "ComponentName / Intent with class FQCN — R8 renames class, navigation fails") { ComponentNameCrash.trigger(this) },
+            CrashTest(22, "Data Class Member", "data class copy()/toString() on renamed member — R8 removes field, NPE", DataClassMemberCrash::trigger),
+            CrashTest(23, "Dynamic Proxy", "Proxy.newProxyInstance — R8 renames interface, InvocationHandler dispatch fails", DynamicProxyCrash::trigger),
+            CrashTest(24, "JSON Asset Resource", "Drawable names from JSON asset — aapt2 shrinks them since JSON is opaque to aapt2") { JsonAssetResourceCrash.trigger(this) },
+            CrashTest(25, "Fragment Class Renamed", "FragmentManager restores fragment by class name — R8 renames class, ClassNotFoundException") { FragmentClassCrash.trigger(this) },
+            CrashTest(26, "Serializable Renamed", "Serializable without serialVersionUID — R8 rename breaks cross-build deserialization") { SerializableCrash.trigger(this) },
         )
 
         setContent {

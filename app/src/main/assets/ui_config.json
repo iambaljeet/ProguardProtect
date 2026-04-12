@@ -1,0 +1,19 @@
+{
+  "screens": {
+    "home": {
+      "header_image": "feature_banner",
+      "background_image": "promo_overlay",
+      "icon": "ic_feature_star"
+    },
+    "dashboard": {
+      "chart_image": "chart_placeholder",
+      "empty_state_image": "ic_empty_dashboard"
+    }
+  },
+  "themes": {
+    "default": {
+      "brand_logo": "brand_logo_light",
+      "brand_logo_dark": "brand_logo_dark"
+    }
+  }
+}

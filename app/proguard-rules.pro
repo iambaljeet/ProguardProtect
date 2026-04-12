@@ -38,6 +38,12 @@
 ## Fix for Crash Type 6: Reflection field access
 #-keepclassmembers class app.proguard.models.AppConfig { *; }
 
+## Fix for Crash Type 7: R8 devirtualization → IllegalAccessError
+## R8 may optimize calls to the private base-class method when a class doesn't override it.
+## Fix: Override the method in the subclass, or keep the class hierarchy:
+#-keep class app.proguard.models.DataProcessor { *; }
+#-keep class app.proguard.models.BaseProcessor { *; }
+
 ## Fix for Crash Type 8: ServiceLoader-like dynamic class loading
 #-keep class app.proguard.models.PluginRegistry { *; }
 
@@ -65,7 +71,8 @@
 #-keep class app.proguard.models.ShippingAddress { *; }
 
 ## Fix for Crash Type 14: JavascriptInterface methods renamed by R8
-#-keepclassmembers class * {
+#-keep class app.proguard.models.WebBridgeHandler { *; }
+#-keepclassmembers class app.proguard.models.WebBridgeHandler {
 #    @android.webkit.JavascriptInterface <methods>;
 #}
 
@@ -73,6 +80,7 @@
 #-keepclasseswithmembernames class * {
 #    native <methods>;
 #}
+#-keep class app.proguard.models.ImageProcessor { *; }
 
 ## Fix for Crash Type 16: WorkManager Worker renamed by R8
 #-keep class * extends androidx.work.Worker {
@@ -88,6 +96,37 @@
 #}
 
 ## Fix for Crash Type 18: Kotlin object INSTANCE field removed by R8
-#-keepclassmembers class * {
+#-keep class app.proguard.models.ConfigManager { *; }
+#-keepclassmembers class app.proguard.models.ConfigManager {
 #    public static ** INSTANCE;
 #}
+## Fix for Crash Type 19: Resource removed by aapt2 strict mode shrinkResources
+## The fix is in res/raw/keep.xml — add tools:keep="@drawable/promo_banner" to <resources>.
+## For reference only (proguard-rules.pro does not control resource shrinking):
+#  In res/raw/keep.xml <resources> element: add tools:keep="@drawable/promo_banner"
+
+## Fix for Crash Type 20: Generic Signature attribute stripped by R8
+#-keepattributes Signature, InnerClasses, EnclosingMethod
+#-keep class app.proguard.crashes.GenericSignatureCrash$UserProfileCallback { *; }
+
+## Fix for Crash Type 21: Activity/component class renamed by R8 → ComponentName fails
+#-keep class app.proguard.crashes.DeepLinkActivity { *; }
+
+## Fix for Crash Type 22: Data class copy()/componentN() removed by R8
+#-keep class app.proguard.models.PriceRecord { *; }
+
+## Fix for Crash Type 23: Dynamic proxy interface renamed by R8 → IllegalArgumentException
+#-keep interface app.proguard.models.ApiCallInterface { *; }
+
+## Fix for Crash Type 24: Resources referenced only via JSON asset files
+## aapt2 cannot see resource names inside JSON files with strict shrinkResources mode.
+#  In res/raw/keep.xml <resources> element: add tools:keep="@drawable/feature_banner,@drawable/promo_overlay"
+
+## Fix for Crash Type 25: Fragment subclass renamed by R8 → FragmentManager back-stack fails
+#-keep class app.proguard.models.ProfileFragment { *; }
+## Or keep ALL Fragment subclasses:
+#-keep class * extends androidx.fragment.app.Fragment { <init>(); }
+
+## Fix for Crash Type 26: Serializable class renamed → cross-build deserialization fails
+#-keep class app.proguard.models.UserSession { *; }
+## Also: Add companion object { private const val serialVersionUID = 1L } to UserSession

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Drawable resource referenced ONLY via getIdentifier() string lookup.
+    With shrinkResources + strict mode, aapt2 will remove this resource
+    since there is no direct R.drawable.promo_banner reference in code.
+    This causes Resources$NotFoundException at runtime when getIdentifier() returns 0.
+    Fix: add tools:keep="@drawable/promo_banner" in res/raw/keep.xml
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:startColor="#FF6B6B"
+        android:endColor="#4ECDC4"
+        android:angle="45" />
+    <corners android:radius="8dp" />
+</shape>
