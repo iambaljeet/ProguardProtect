@@ -236,6 +236,16 @@ class HtmlReportGenerator {
         ProguardIssue.IssueType.CALLBACK_INTERFACE_STRIPPED -> "🔌"
         ProguardIssue.IssueType.DEVIRTUALIZATION_ILLEGAL_ACCESS -> "🚫"
         ProguardIssue.IssueType.NO_CLASS_DEF_FOUND -> "❌"
+        ProguardIssue.IssueType.GSON_TYPE_TOKEN_STRIPPED -> "🔗"
+        ProguardIssue.IssueType.COMPANION_OBJECT_STRIPPED -> "🧩"
+        ProguardIssue.IssueType.SEALED_SUBCLASS_STRIPPED -> "🌿"
+        ProguardIssue.IssueType.ANNOTATION_STRIPPED -> "🏷"
+        ProguardIssue.IssueType.PARCELABLE_CLASS_RENAMED -> "📦"
+        ProguardIssue.IssueType.JAVASCRIPT_INTERFACE_STRIPPED -> "🌐"
+        ProguardIssue.IssueType.NATIVE_METHOD_RENAMED -> "⚙️"
+        ProguardIssue.IssueType.WORKMANAGER_WORKER_STRIPPED -> "🔧"
+        ProguardIssue.IssueType.CUSTOM_VIEW_STRIPPED -> "🖼️"
+        ProguardIssue.IssueType.KOTLIN_OBJECT_INSTANCE_REMOVED -> "🎯"
     }
 
     /** Returns a human-readable label for each issue type. */
@@ -247,6 +257,16 @@ class HtmlReportGenerator {
         ProguardIssue.IssueType.CALLBACK_INTERFACE_STRIPPED -> "Callback Interface Stripped"
         ProguardIssue.IssueType.DEVIRTUALIZATION_ILLEGAL_ACCESS -> "IllegalAccessError (Devirtualization)"
         ProguardIssue.IssueType.NO_CLASS_DEF_FOUND -> "NoClassDefFoundError"
+        ProguardIssue.IssueType.GSON_TYPE_TOKEN_STRIPPED -> "Gson TypeToken Generic Signature Stripped"
+        ProguardIssue.IssueType.COMPANION_OBJECT_STRIPPED -> "Companion Object Renamed/Stripped"
+        ProguardIssue.IssueType.SEALED_SUBCLASS_STRIPPED -> "Sealed Subclass Stripped"
+        ProguardIssue.IssueType.ANNOTATION_STRIPPED -> "Runtime Annotation Stripped"
+        ProguardIssue.IssueType.PARCELABLE_CLASS_RENAMED -> "Parcelable Class Renamed"
+        ProguardIssue.IssueType.JAVASCRIPT_INTERFACE_STRIPPED -> "JavascriptInterface Methods Stripped"
+        ProguardIssue.IssueType.NATIVE_METHOD_RENAMED -> "Native/JNI Class Renamed"
+        ProguardIssue.IssueType.WORKMANAGER_WORKER_STRIPPED -> "WorkManager Worker Stripped"
+        ProguardIssue.IssueType.CUSTOM_VIEW_STRIPPED -> "Custom View Class Renamed"
+        ProguardIssue.IssueType.KOTLIN_OBJECT_INSTANCE_REMOVED -> "Kotlin Object INSTANCE Removed"
     }
 
     /** Escapes HTML special characters. */

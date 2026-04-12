@@ -51,6 +51,11 @@ class SerializationAnalyzer : BaseAnalyzer() {
 
         for (source in sourceFiles) {
             source.lines.forEachIndexed { index, line ->
+                // Skip comment lines — prevents matching TypeToken references in KDoc/JavaDoc
+                // (e.g., a model file documenting "TypeToken<List<ProductCatalog>>" in its comments)
+                val trimmed = line.trim()
+                if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) return@forEachIndexed
+
                 gsonFromJsonPattern.findAll(line).forEach { match ->
                     val classRef = match.groupValues[1]
                     val fullName = if (classRef.contains(".")) classRef
@@ -60,10 +65,18 @@ class SerializationAnalyzer : BaseAnalyzer() {
 
                 typeTokenPattern.findAll(line).forEach { match ->
                     val simpleName = match.groupValues[1]
-                    if (simpleName[0].isUpperCase()) {
-                        val fullName = source.resolveClassName(simpleName) ?: "${source.packageName}.$simpleName"
-                        gsonModelClasses.add(fullName to "${source.file.path}:${index + 1}")
+                    // Prefer FQN already present in the same line (e.g., TypeToken<List<app.pkg.Cls>>)
+                    // before falling back to simple-name resolution, which may resolve to the wrong package.
+                    val fqnInLine = Regex("""((?:app|com|org|net)\.[a-z][a-z0-9.]+\.[A-Z][a-zA-Z0-9]*)""")
+                        .find(line)?.groupValues?.get(1)
+                    val fullName = when {
+                        fqnInLine != null && !fqnInLine.startsWith("com.google") && !fqnInLine.startsWith("com.android") ->
+                            fqnInLine
+                        simpleName.isNotEmpty() && simpleName[0].isUpperCase() ->
+                            source.resolveClassName(simpleName) ?: "${source.packageName}.$simpleName"
+                        else -> return@forEach
                     }
+                    gsonModelClasses.add(fullName to "${source.file.path}:${index + 1}")
                 }
             }
         }

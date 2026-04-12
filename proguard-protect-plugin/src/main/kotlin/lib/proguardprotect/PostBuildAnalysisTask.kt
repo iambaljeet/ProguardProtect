@@ -136,7 +136,17 @@ abstract class PostBuildAnalysisTask : DefaultTask() {
             SerializationAnalyzer(),
             EnumAnalyzer(),
             CallbackAnalyzer(),
-            DevirtualizationAnalyzer()
+            DevirtualizationAnalyzer(),
+            GsonTypeTokenAnalyzer(),
+            CompanionObjectAnalyzer(),
+            SealedClassAnalyzer(),
+            AnnotationAnalyzer(),
+            ParcelableAnalyzer(),
+            JavascriptInterfaceAnalyzer(),
+            NativeMethodAnalyzer(),
+            WorkManagerAnalyzer(),
+            CustomViewAnalyzer(),
+            KotlinObjectAnalyzer()
         )
 
         // Run analyzers with EMPTY keep rules to find ALL potentially vulnerable patterns
@@ -312,6 +322,162 @@ abstract class PostBuildAnalysisTask : DefaultTask() {
                         wasRenamed && fieldsRenamed -> "R8 renamed class '$className' → '${mappingEntry.obfuscatedName}' AND renamed fields"
                         wasRenamed -> "R8 renamed class '$className' → '${mappingEntry.obfuscatedName}'"
                         else -> "R8 renamed fields in '$className'"
+                    }
+                    confirmed.add(issue.copy(
+                        message = "[POST-BUILD CONFIRMED] $detail. ${issue.message}",
+                        severity = ProguardIssue.Severity.ERROR
+                    ))
+                }
+                continue
+            }
+
+            // For GSON_TYPE_TOKEN_STRIPPED: model class renamed or fields renamed → TypeToken will fail
+            if (issue.type == ProguardIssue.IssueType.GSON_TYPE_TOKEN_STRIPPED) {
+                val fieldsRenamed = mappingEntry.members.any { m ->
+                    m.type == "field" && m.obfuscatedName != m.originalName
+                }
+                if (wasRenamed || fieldsRenamed) {
+                    val detail = when {
+                        wasRenamed && fieldsRenamed -> "R8 renamed class '$className' → '${mappingEntry.obfuscatedName}' AND renamed fields"
+                        wasRenamed -> "R8 renamed class '$className' → '${mappingEntry.obfuscatedName}'"
+                        else -> "R8 renamed fields in '$className'"
+                    }
+                    confirmed.add(issue.copy(
+                        message = "[POST-BUILD CONFIRMED] $detail. ${issue.message}",
+                        severity = ProguardIssue.Severity.ERROR
+                    ))
+                }
+                continue
+            }
+
+            // For COMPANION_OBJECT_STRIPPED: companion class renamed or missing → reflection fails
+            if (issue.type == ProguardIssue.IssueType.COMPANION_OBJECT_STRIPPED) {
+                if (wasRenamed) {
+                    confirmed.add(issue.copy(
+                        message = "[POST-BUILD CONFIRMED] R8 renamed companion class '$className' → '${mappingEntry.obfuscatedName}'. ${issue.message}",
+                        severity = ProguardIssue.Severity.ERROR
+                    ))
+                } else if (dexClasses.isNotEmpty()) {
+                    val dexName = className.replace('.', '/').replace('$', '$')
+                    val foundInDex = dexClasses.any { it == className || it.contains(className.substringAfterLast(".")) }
+                    if (!foundInDex) {
+                        confirmed.add(issue.copy(
+                            message = "[POST-BUILD CONFIRMED] Companion class '$className' not found in final DEX — R8 removed it. ${issue.message}",
+                            severity = ProguardIssue.Severity.ERROR
+                        ))
+                    }
+                }
+                continue
+            }
+
+            // For SEALED_SUBCLASS_STRIPPED: check if any expected subtypes are missing from DEX
+            if (issue.type == ProguardIssue.IssueType.SEALED_SUBCLASS_STRIPPED) {
+                val subtypeNames = issue.memberName?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
+                if (!subtypeNames.isNullOrEmpty() && dexClasses.isNotEmpty()) {
+                    val missingSubtypes = subtypeNames.filter { subtypeFqn ->
+                        val dexFormat = subtypeFqn.replace('.', '/')
+                        !dexClasses.any { it == subtypeFqn || it == "L$dexFormat;" || it.endsWith(subtypeFqn.substringAfterLast(".")) }
+                    }
+                    if (missingSubtypes.isNotEmpty()) {
+                        confirmed.add(issue.copy(
+                            message = "[POST-BUILD CONFIRMED] R8 removed ${missingSubtypes.size} sealed subtype(s) of '$className' from DEX: " +
+                                "${missingSubtypes.joinToString(", ")}. ${issue.message}",
+                            severity = ProguardIssue.Severity.ERROR
+                        ))
+                    }
+                } else if (wasRenamed) {
+                    // Sealed class itself was renamed → subtypes likely renamed/removed too
+                    confirmed.add(issue.copy(
+                        message = "[POST-BUILD CONFIRMED] R8 renamed sealed class '$className' → '${mappingEntry.obfuscatedName}'. ${issue.message}",
+                        severity = ProguardIssue.Severity.ERROR
+                    ))
+                }
+                continue
+            }
+
+            // For ANNOTATION_STRIPPED: annotation class renamed in mapping → stripped at runtime
+            if (issue.type == ProguardIssue.IssueType.ANNOTATION_STRIPPED) {
+                if (wasRenamed) {
+                    confirmed.add(issue.copy(
+                        message = "[POST-BUILD CONFIRMED] R8 renamed annotation class '$className' → '${mappingEntry.obfuscatedName}'. " +
+                            "getAnnotation() will return null at runtime. ${issue.message}",
+                        severity = ProguardIssue.Severity.ERROR
+                    ))
+                }
+                continue
+            }
+
+            // For PARCELABLE_CLASS_RENAMED: class renamed → Bundle deserialization fails
+            if (issue.type == ProguardIssue.IssueType.PARCELABLE_CLASS_RENAMED) {
+                if (wasRenamed) {
+                    confirmed.add(issue.copy(
+                        message = "[POST-BUILD CONFIRMED] R8 renamed Parcelable class '$className' → '${mappingEntry.obfuscatedName}'. " +
+                            "Android stores original class name in Parcel → BadParcelableException on deserialization. ${issue.message}",
+                        severity = ProguardIssue.Severity.ERROR
+                    ))
+                }
+                continue
+            }
+
+            // For JAVASCRIPT_INTERFACE_STRIPPED: class renamed → @JavascriptInterface methods renamed
+            if (issue.type == ProguardIssue.IssueType.JAVASCRIPT_INTERFACE_STRIPPED) {
+                if (wasRenamed) {
+                    confirmed.add(issue.copy(
+                        message = "[POST-BUILD CONFIRMED] R8 renamed class '$className' → '${mappingEntry.obfuscatedName}'. " +
+                            "@JavascriptInterface methods are renamed → JavaScript bridge calls fail at runtime. ${issue.message}",
+                        severity = ProguardIssue.Severity.ERROR
+                    ))
+                }
+                continue
+            }
+
+            // For NATIVE_METHOD_RENAMED: class renamed → JNI signatures no longer match
+            if (issue.type == ProguardIssue.IssueType.NATIVE_METHOD_RENAMED) {
+                if (wasRenamed) {
+                    confirmed.add(issue.copy(
+                        message = "[POST-BUILD CONFIRMED] R8 renamed class '$className' → '${mappingEntry.obfuscatedName}'. " +
+                            "JNI function signatures encode the original class name → UnsatisfiedLinkError at runtime. ${issue.message}",
+                        severity = ProguardIssue.Severity.ERROR
+                    ))
+                }
+                continue
+            }
+
+            // For WORKMANAGER_WORKER_STRIPPED: class renamed → WorkManager ClassNotFoundException
+            if (issue.type == ProguardIssue.IssueType.WORKMANAGER_WORKER_STRIPPED) {
+                if (wasRenamed) {
+                    confirmed.add(issue.copy(
+                        message = "[POST-BUILD CONFIRMED] R8 renamed Worker class '$className' → '${mappingEntry.obfuscatedName}'. " +
+                            "WorkManager stores original FQCN in DB → ClassNotFoundException on execution. ${issue.message}",
+                        severity = ProguardIssue.Severity.ERROR
+                    ))
+                }
+                continue
+            }
+
+            // For CUSTOM_VIEW_STRIPPED: class renamed → LayoutInflater ClassNotFoundException
+            if (issue.type == ProguardIssue.IssueType.CUSTOM_VIEW_STRIPPED) {
+                if (wasRenamed) {
+                    confirmed.add(issue.copy(
+                        message = "[POST-BUILD CONFIRMED] R8 renamed custom View class '$className' → '${mappingEntry.obfuscatedName}'. " +
+                            "LayoutInflater uses original class name from XML → InflateException: ClassNotFoundException. ${issue.message}",
+                        severity = ProguardIssue.Severity.ERROR
+                    ))
+                }
+                continue
+            }
+
+            // For KOTLIN_OBJECT_INSTANCE_REMOVED: class renamed OR INSTANCE field removed
+            if (issue.type == ProguardIssue.IssueType.KOTLIN_OBJECT_INSTANCE_REMOVED) {
+                val instanceFieldRemoved = mappingEntry.members.none { m ->
+                    m.originalName == "INSTANCE"
+                }
+                if (wasRenamed || instanceFieldRemoved) {
+                    val detail = when {
+                        wasRenamed && instanceFieldRemoved ->
+                            "R8 renamed class '$className' → '${mappingEntry.obfuscatedName}' AND removed INSTANCE field"
+                        wasRenamed -> "R8 renamed class '$className' → '${mappingEntry.obfuscatedName}'"
+                        else -> "R8 removed INSTANCE field from class '$className'"
                     }
                     confirmed.add(issue.copy(
                         message = "[POST-BUILD CONFIRMED] $detail. ${issue.message}",

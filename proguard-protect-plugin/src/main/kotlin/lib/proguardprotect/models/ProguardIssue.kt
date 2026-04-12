@@ -42,7 +42,27 @@ data class ProguardIssue(
         /** R8 devirtualization routing interface call to base class private method */
         DEVIRTUALIZATION_ILLEGAL_ACCESS,
         /** Class not found in final DEX (removed entirely by R8) */
-        NO_CLASS_DEF_FOUND
+        NO_CLASS_DEF_FOUND,
+        /** Gson TypeToken loses generic type info when Signature attribute is stripped */
+        GSON_TYPE_TOKEN_STRIPPED,
+        /** Kotlin companion object accessed via reflection is renamed by R8 */
+        COMPANION_OBJECT_STRIPPED,
+        /** Sealed class subtypes are removed from DEX by R8 */
+        SEALED_SUBCLASS_STRIPPED,
+        /** Custom @Retention(RUNTIME) annotation stripped by R8 */
+        ANNOTATION_STRIPPED,
+        /** Parcelable class renamed by R8, Bundle/Intent deserialization fails */
+        PARCELABLE_CLASS_RENAMED,
+        /** WebView @JavascriptInterface methods renamed by R8, JS bridge calls fail */
+        JAVASCRIPT_INTERFACE_STRIPPED,
+        /** Class containing JNI native methods renamed by R8 → UnsatisfiedLinkError */
+        NATIVE_METHOD_RENAMED,
+        /** WorkManager Worker subclass renamed/stripped by R8 → ClassNotFoundException */
+        WORKMANAGER_WORKER_STRIPPED,
+        /** Custom View class renamed by R8 → InflateException when inflating from XML */
+        CUSTOM_VIEW_STRIPPED,
+        /** Kotlin object INSTANCE field removed by R8 → NoSuchFieldError via reflection */
+        KOTLIN_OBJECT_INSTANCE_REMOVED
     }
 
     /** Severity levels for detected issues. */

@@ -40,6 +40,16 @@ class MainActivity : ComponentActivity() {
             CrashTest(6, "NoSuchFieldError", "getDeclaredField() with string name — R8 renames field", ReflectionFieldCrash::trigger),
             CrashTest(7, "IllegalAccessError", "Devirtualization: R8 routes interface call to base private method", DevirtualizationCrash::trigger),
             CrashTest(8, "ServiceLoader Pattern", "Dynamic class loading via constructed string — R8 strips class", ServiceLoaderCrash::trigger),
+            CrashTest(9, "TypeToken Stripped", "Gson TypeToken loses generic type — R8 strips Signature attribute", GsonTypeTokenCrash::trigger),
+            CrashTest(10, "Companion Object", "Companion class renamed by R8 — reflection on \$Companion fails", CompanionReflectionCrash::trigger),
+            CrashTest(11, "Sealed Subclasses", "R8 removes sealed subtypes not directly referenced", SealedClassCrash::trigger),
+            CrashTest(12, "Annotation Stripped", "R8 strips @Retention(RUNTIME) annotation — getAnnotation() returns null", AnnotationCrash::trigger),
+            CrashTest(13, "Parcelable Renamed", "R8 renames Parcelable class — Bundle deserialization fails", ParcelableCrash::trigger),
+            CrashTest(14, "JS Interface Stripped", "R8 renames @JavascriptInterface methods — JS bridge calls fail", JavascriptInterfaceCrash::trigger),
+            CrashTest(15, "Native Method Renamed", "R8 renames class with JNI native methods — UnsatisfiedLinkError", NativeMethodCrash::trigger),
+            CrashTest(16, "WorkManager Stripped", "R8 renames Worker class — WorkManager ClassNotFoundException", WorkManagerCrash::trigger),
+            CrashTest(17, "Custom View Stripped", "R8 renames custom View class — InflateException", CustomViewCrash::trigger),
+            CrashTest(18, "Kotlin Object INSTANCE", "R8 removes Kotlin object INSTANCE field — NoSuchFieldError", KotlinObjectCrash::trigger),
         )
 
         setContent {

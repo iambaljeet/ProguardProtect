@@ -40,3 +40,54 @@
 
 ## Fix for Crash Type 8: ServiceLoader-like dynamic class loading
 #-keep class app.proguard.models.PluginRegistry { *; }
+
+## Fix for Case 9: Gson TypeToken generic signature stripped
+#-keepattributes Signature
+#-keep class * extends com.google.gson.reflect.TypeToken
+#-keep class app.proguard.models.ProductCatalog { *; }
+
+## Fix for Case 10: Companion object reflection
+#-keep class app.proguard.models.NetworkConfig$Companion { *; }
+#-keep class app.proguard.models.NetworkConfig { *; }
+
+## Fix for Case 11: Sealed class subtype reflection
+#-keep class app.proguard.models.CheckoutState { *; }
+#-keep class app.proguard.models.CheckoutState$* { *; }
+
+## Fix for Case 12: Custom runtime annotation stripping
+#-keepattributes *Annotation*
+#-keep @interface app.proguard.models.JsonModel { *; }
+#-keepclassmembers class ** {
+#    @app.proguard.models.JsonModel *;
+#}
+
+## Fix for Case 13: Parcelable class renamed by R8
+#-keep class app.proguard.models.ShippingAddress { *; }
+
+## Fix for Crash Type 14: JavascriptInterface methods renamed by R8
+#-keepclassmembers class * {
+#    @android.webkit.JavascriptInterface <methods>;
+#}
+
+## Fix for Crash Type 15: Native/JNI methods — class renamed by R8
+#-keepclasseswithmembernames class * {
+#    native <methods>;
+#}
+
+## Fix for Crash Type 16: WorkManager Worker renamed by R8
+#-keep class * extends androidx.work.Worker {
+#    public <init>(android.content.Context, androidx.work.WorkerParameters);
+#}
+#-keep class * extends androidx.work.CoroutineWorker {
+#    public <init>(android.content.Context, androidx.work.WorkerParameters);
+#}
+
+## Fix for Crash Type 17: Custom View renamed by R8 → InflateException
+#-keep class * extends android.view.View {
+#    public <init>(android.content.Context, android.util.AttributeSet);
+#}
+
+## Fix for Crash Type 18: Kotlin object INSTANCE field removed by R8
+#-keepclassmembers class * {
+#    public static ** INSTANCE;
+#}

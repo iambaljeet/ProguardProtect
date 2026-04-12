@@ -76,6 +76,10 @@ class ReflectionClassAnalyzer : BaseAnalyzer() {
 
             // Check Pattern 1: Direct string literal
             source.lines.forEachIndexed { index, line ->
+                // Skip comment lines — KDoc/JavaDoc often contains Class.forName() examples
+                val trimmed = line.trim()
+                if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) return@forEachIndexed
+
                 directForNamePattern.findAll(line).forEach { match ->
                     val className = match.groupValues[1]
                     if (!parser.isClassKept(className, keepRules)) {
@@ -138,32 +142,13 @@ class ReflectionClassAnalyzer : BaseAnalyzer() {
             }
         }
 
-        // Strategy 3: If we found packages but no resolved classes,
-        // check all known classes against those package prefixes
-        if (resolved.isEmpty() && packageStrings.isNotEmpty()) {
-            for (pkg in packageStrings) {
-                for (knownClass in allClassNames) {
-                    if (knownClass.startsWith("$pkg.") && knownClass.count { it == '.' } == pkg.count { it == '.' } + 1) {
-                        resolved.add(knownClass)
-                    }
-                }
-            }
-        }
-
-        // Strategy 3b: Also for joinToString-built packages
-        if (resolved.isEmpty()) {
-            joinToStringPattern.findAll(content).forEach { match ->
-                val parts = match.groupValues[1]
-                    .split(",")
-                    .map { it.trim().removeSurrounding("\"") }
-                val basePkg = parts.joinToString(".")
-                for (knownClass in allClassNames) {
-                    if (knownClass.startsWith("$basePkg.") && knownClass.count { it == '.' } == basePkg.count { it == '.' } + 1) {
-                        resolved.add(knownClass)
-                    }
-                }
-            }
-        }
+        // Strategy 3 (REMOVED): Previously this fell back to matching ALL classes in the detected
+        // package prefix when no specific class name was found. This caused false positives for
+        // files like CompanionReflectionCrash.kt that build class names from two variables
+        // (e.g., "$pkg.$className"), since the package string was found but the appended class
+        // (lowercase variable) wasn't matched by classAppendPattern. The broad fallback generated
+        // an issue for every class in the package instead of just the intended one.
+        // Solution: callers should use explicit class name patterns (Strategies 1, 2, 4) only.
 
         // Strategy 4: For complex patterns like arrayOf("app", "proguard", "models", "Plugin", "Registry")
         // where parts are combined with take/drop/joinToString in various ways
