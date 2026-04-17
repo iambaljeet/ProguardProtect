@@ -172,7 +172,11 @@ abstract class PostBuildAnalysisTask : DefaultTask() {
             SerializableAnalyzer(),
             ObjectAnimatorAnalyzer(),
             InnerClassReflectionAnalyzer(),
-            AndroidOnClickAnalyzer()
+            AndroidOnClickAnalyzer(),
+            ClassLoaderAnalyzer(),
+            JvmOverloadsAnalyzer(),
+            ViewModelFactoryAnalyzer(),
+            ExceptionClassAnalyzer()
         )
 
         // Run analyzers with EMPTY keep rules to find ALL potentially vulnerable patterns
@@ -777,6 +781,70 @@ abstract class PostBuildAnalysisTask : DefaultTask() {
                             severity = ProguardIssue.Severity.ERROR
                         ))
                     }
+                }
+                continue
+            }
+
+            // For CLASSLOADER_LOADCLASS: same confirmation as REFLECTION_CLASS_FOR_NAME — class renamed or removed
+            if (issue.type == ProguardIssue.IssueType.CLASSLOADER_LOADCLASS) {
+                if (wasRenamed) {
+                    confirmed.add(issue.copy(
+                        message = "[POST-BUILD CONFIRMED] R8 renamed '$className' → '${mappingEntry.obfuscatedName}'. " +
+                            "ClassLoader.loadClass(\"$className\") will throw ClassNotFoundException at runtime. ${issue.message}",
+                        severity = ProguardIssue.Severity.ERROR
+                    ))
+                }
+                continue
+            }
+
+            // For JVMOVERLOADS_OVERLOAD_STRIPPED: confirm if class was renamed (overload names change)
+            // or if the specific method was renamed in mapping (overloads renamed too)
+            if (issue.type == ProguardIssue.IssueType.JVMOVERLOADS_OVERLOAD_STRIPPED) {
+                val memberName = issue.memberName
+                val methodRenamed = memberName != null && mappingEntry.members.any { m ->
+                    m.originalName == memberName && m.obfuscatedName != memberName && m.type == "method"
+                }
+                if (wasRenamed || methodRenamed) {
+                    val detail = when {
+                        wasRenamed && methodRenamed ->
+                            "R8 renamed class '$className' → '${mappingEntry.obfuscatedName}' AND renamed method '$memberName'"
+                        wasRenamed ->
+                            "R8 renamed class '$className' → '${mappingEntry.obfuscatedName}'"
+                        else ->
+                            "R8 renamed method '$memberName' in '$className'"
+                    }
+                    confirmed.add(issue.copy(
+                        message = "[POST-BUILD CONFIRMED] $detail. @JvmOverloads-generated overloads are also " +
+                            "renamed/removed — reflection or Java interop calling a shorter overload will get " +
+                            "NoSuchMethodError at runtime. ${issue.message}",
+                        severity = ProguardIssue.Severity.ERROR
+                    ))
+                }
+                continue
+            }
+
+            // For VIEWMODEL_FACTORY_CONSTRUCTOR_STRIPPED: confirm if the factory class was renamed
+            if (issue.type == ProguardIssue.IssueType.VIEWMODEL_FACTORY_CONSTRUCTOR_STRIPPED) {
+                if (wasRenamed) {
+                    confirmed.add(issue.copy(
+                        message = "[POST-BUILD CONFIRMED] R8 renamed ViewModelProvider.Factory '$className' → " +
+                            "'${mappingEntry.obfuscatedName}'. The no-arg constructor is also renamed, so " +
+                            "ViewModelProvider's reflective instantiation will throw InstantiationException at runtime. ${issue.message}",
+                        severity = ProguardIssue.Severity.ERROR
+                    ))
+                }
+                continue
+            }
+
+            // For EXCEPTION_CLASS_RENAMED: confirm if the exception class was renamed
+            if (issue.type == ProguardIssue.IssueType.EXCEPTION_CLASS_RENAMED) {
+                if (wasRenamed) {
+                    confirmed.add(issue.copy(
+                        message = "[POST-BUILD CONFIRMED] R8 renamed exception class '$className' → " +
+                            "'${mappingEntry.obfuscatedName}'. String-based lookups (Class.forName, stored class names) " +
+                            "will fail with ClassNotFoundException at runtime. ${issue.message}",
+                        severity = ProguardIssue.Severity.ERROR
+                    ))
                 }
                 continue
             }

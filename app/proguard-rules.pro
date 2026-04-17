@@ -145,3 +145,20 @@
 #-keep class app.proguard.crashes.AndroidOnClickCrash {
 #    public void handlePaymentSubmit(android.view.View);
 #}
+
+## Fix for Crash Type 30: ClassLoader.loadClass() — same failure mode as Class.forName()
+# -keep class app.proguard.models.PluginModule { *; }
+
+## Fix for Crash Type 31: @JvmOverloads synthetic overloads stripped by R8
+# -keepclassmembers class app.proguard.models.NotificationBuilder {
+#     public *** sendNotification(...);
+# }
+
+## Fix for Crash Type 32: ViewModelProvider.Factory no-arg constructor stripped by R8
+# -keep class app.proguard.models.UserViewModel$Factory {
+#     public <init>();
+# }
+# -keep class app.proguard.models.UserViewModel { *; }
+
+## Fix for Crash Type 33: Exception class renamed by R8 — string-based lookup fails
+# -keep class app.proguard.models.NetworkException { *; }

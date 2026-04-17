@@ -84,7 +84,15 @@ data class ProguardIssue(
         /** Class.forName() with nested class notation ("X$Y") — outer class renamed breaks path */
         INNER_CLASS_REFLECTION_RENAMED,
         /** android:onClick handler method renamed by R8; runtime reflection lookup fails */
-        ANDROID_ONCLICK_METHOD_RENAMED
+        ANDROID_ONCLICK_METHOD_RENAMED,
+        /** ClassLoader.loadClass() with string class name — same failure mode as Class.forName() */
+        CLASSLOADER_LOADCLASS,
+        /** @JvmOverloads generates synthetic overloads that R8 strips as unreachable */
+        JVMOVERLOADS_OVERLOAD_STRIPPED,
+        /** Custom ViewModelProvider.Factory loses its no-arg constructor when R8 strips it */
+        VIEWMODEL_FACTORY_CONSTRUCTOR_STRIPPED,
+        /** Custom exception class renamed by R8; string-based lookup fails with ClassNotFoundException */
+        EXCEPTION_CLASS_RENAMED
     }
 
     /** Severity levels for detected issues. */

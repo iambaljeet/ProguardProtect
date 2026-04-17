@@ -16,7 +16,7 @@ Pre-build source analysis against keep rules can produce false positives. Progua
 
 ## Detected Crash Types
 
-ProguardProtect detects **29 categories** of R8/ProGuard runtime crash vulnerabilities, all confirmed against the actual post-build artifacts.
+ProguardProtect detects **33 categories** of R8/ProGuard runtime crash vulnerabilities, all confirmed against the actual post-build artifacts.
 
 | # | Crash Type | Runtime Exception | Description |
 |---|-----------|-------------------|-------------|
@@ -49,10 +49,45 @@ ProguardProtect detects **29 categories** of R8/ProGuard runtime crash vulnerabi
 | 27 | **ObjectAnimator Property Renamed** | `NoSuchMethodError` | `ObjectAnimator.ofFloat(view, "propertyName", ...)` references setter by string — R8 renames the method |
 | 28 | **Inner Class Reflection Renamed** | `ClassNotFoundException` | `Class.forName("Outer$Inner")` — R8 renames nested classes; `$`-notation breaks |
 | 29 | **Android XML onClick Method Renamed** | `NoSuchMethodException` | `android:onClick="methodName"` in layout XML — R8 renames the handler method, View dispatch fails |
+| 30 | **ClassLoader.loadClass() Class Removed** | `ClassNotFoundException` | `ClassLoader.loadClass()` with a string class name — same failure mode as `Class.forName()` but bypasses Class.forName detectors |
+| 31 | **@JvmOverloads Synthetic Overload Stripped** | `NoSuchMethodError` | `@JvmOverloads` generates synthetic Java overloads; R8 strips unused shorter-arity overloads, breaking Java interop or reflection |
+| 32 | **ViewModelProvider.Factory Constructor Stripped** | `InstantiationException` / `IllegalAccessException` | Custom `ViewModelProvider.Factory` loses no-arg constructor; ViewModelProvider uses reflection to instantiate it |
+| 33 | **Exception Class Renamed (String Lookup)** | `ClassNotFoundException` | Exception class name stored as a string constant (error analytics, retry frameworks) — R8 renames the class, breaking string-based reconstruction |
 
 ## Installation
 
-### 1. Add the plugin as a composite build
+### Option A — JitPack (Recommended)
+
+Add JitPack to your plugin resolution in **`settings.gradle.kts`**:
+
+```kotlin
+pluginManagement {
+    repositories {
+        maven("https://jitpack.io")
+        gradlePluginPortal()
+        google()
+        mavenCentral()
+    }
+    resolutionStrategy {
+        eachPlugin {
+            if (requested.id.id == "lib.proguardprotect") {
+                useModule("com.github.iambaljeet:proguard-protect-plugin:${requested.version}")
+            }
+        }
+    }
+}
+```
+
+Then apply in `app/build.gradle.kts`:
+
+```kotlin
+plugins {
+    id("com.android.application")
+    id("lib.proguardprotect") version "v1.0.0"
+}
+```
+
+### Option B — Composite Build (local / development)
 
 Copy the `proguard-protect-plugin/` directory into your project root, then add to your **root** `settings.gradle.kts`:
 
@@ -60,9 +95,7 @@ Copy the `proguard-protect-plugin/` directory into your project root, then add t
 includeBuild("proguard-protect-plugin")
 ```
 
-### 2. Apply the plugin in your app module
-
-In `app/build.gradle.kts`:
+Then apply in `app/build.gradle.kts`:
 
 ```kotlin
 plugins {
@@ -71,7 +104,7 @@ plugins {
 }
 ```
 
-### 3. Configure (optional)
+### Configure (optional)
 
 ```kotlin
 proguardProtect {
@@ -278,6 +311,30 @@ public class DataProcessor extends BaseProcessor implements Processable {
 }
 ```
 
+### ClassLoader.loadClass() (Type 30)
+```proguard
+-keep class com.myapp.models.PluginModule { *; }
+```
+
+### @JvmOverloads Synthetic Overloads (Type 31)
+```proguard
+-keepclassmembers class com.myapp.models.NotificationBuilder {
+    public *** sendNotification(...);
+}
+```
+
+### ViewModelProvider.Factory Constructor (Type 32)
+```proguard
+-keep class com.myapp.viewmodels.UserViewModel$Factory {
+    public <init>();
+}
+```
+
+### Exception Class Renamed (Type 33)
+```proguard
+-keep class com.myapp.exceptions.NetworkException { *; }
+```
+
 ## Requirements
 
 - Android Gradle Plugin 9.x+
@@ -296,7 +353,7 @@ proguard-protect-plugin/
     ├── ProguardProtectExtension.kt       # DSL configuration
     ├── PostBuildAnalysisTask.kt          # Main analysis task (mapping + DEX + source)
     ├── models/
-    │   └── ProguardIssue.kt              # Issue data model (29 IssueType values)
+    │   └── ProguardIssue.kt              # Issue data model (33 IssueType values)
     ├── analyzers/                        # One analyzer per crash category
     │   ├── BaseAnalyzer.kt
     │   ├── ReflectionClassAnalyzer.kt    # Type 1: Class.forName()
@@ -327,7 +384,11 @@ proguard-protect-plugin/
     │   ├── SerializableAnalyzer.kt       # Type 26: Serializable class renamed
     │   ├── ObjectAnimatorAnalyzer.kt     # Type 27: ObjectAnimator property string renamed
     │   ├── InnerClassReflectionAnalyzer.kt # Type 28: Inner class forName($) renamed
-    │   └── AndroidOnClickAnalyzer.kt     # Type 29: android:onClick XML method renamed
+    │   ├── AndroidOnClickAnalyzer.kt     # Type 29: android:onClick XML method renamed
+    │   ├── ClassLoaderAnalyzer.kt        # Type 30: ClassLoader.loadClass() string ref
+    │   ├── JvmOverloadsAnalyzer.kt       # Type 31: @JvmOverloads synthetic overloads stripped
+    │   ├── ViewModelFactoryAnalyzer.kt   # Type 32: ViewModelProvider.Factory constructor
+    │   └── ExceptionClassAnalyzer.kt     # Type 33: Exception class renamed, string lookup fails
     ├── utils/
     │   ├── MappingParser.kt              # mapping.txt parser
     │   ├── ProguardRulesParser.kt        # Keep rule parser

@@ -257,6 +257,10 @@ class HtmlReportGenerator {
         ProguardIssue.IssueType.OBJECT_ANIMATOR_PROPERTY_RENAMED -> "🎬"
         ProguardIssue.IssueType.INNER_CLASS_REFLECTION_RENAMED -> "🪆"
         ProguardIssue.IssueType.ANDROID_ONCLICK_METHOD_RENAMED -> "👆"
+        ProguardIssue.IssueType.CLASSLOADER_LOADCLASS -> "📂"
+        ProguardIssue.IssueType.JVMOVERLOADS_OVERLOAD_STRIPPED -> "🔁"
+        ProguardIssue.IssueType.VIEWMODEL_FACTORY_CONSTRUCTOR_STRIPPED -> "🏭"
+        ProguardIssue.IssueType.EXCEPTION_CLASS_RENAMED -> "⚠️"
     }
 
     /** Returns a human-readable label for each issue type. */
@@ -289,6 +293,10 @@ class HtmlReportGenerator {
         ProguardIssue.IssueType.OBJECT_ANIMATOR_PROPERTY_RENAMED -> "ObjectAnimator Property Setter Renamed (NoSuchMethodException)"
         ProguardIssue.IssueType.INNER_CLASS_REFLECTION_RENAMED -> "Nested Class Reflection Broken (ClassNotFoundException)"
         ProguardIssue.IssueType.ANDROID_ONCLICK_METHOD_RENAMED -> "android:onClick Handler Renamed (IllegalStateException)"
+        ProguardIssue.IssueType.CLASSLOADER_LOADCLASS -> "ClassLoader.loadClass() — Class Renamed/Removed"
+        ProguardIssue.IssueType.JVMOVERLOADS_OVERLOAD_STRIPPED -> "@JvmOverloads Synthetic Overload Stripped"
+        ProguardIssue.IssueType.VIEWMODEL_FACTORY_CONSTRUCTOR_STRIPPED -> "ViewModelProvider.Factory Constructor Stripped"
+        ProguardIssue.IssueType.EXCEPTION_CLASS_RENAMED -> "Exception Class Renamed (ClassNotFoundException)"
     }
 
     /** Escapes HTML special characters. */
